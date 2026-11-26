@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trends</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #ffffff; --text: #16181d; --muted: #646a76; --line: #e3e3df;
+    --accent: #0f766e; --accent-soft: #d8efec; --hot: #c2410c; --chip: #efefeb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111316; --card: #1a1d22; --text: #eceef2; --muted: #9aa1ad; --line: #2a2e35;
+      --accent: #2dd4bf; --accent-soft: #123b37; --hot: #fb923c; --chip: #23272e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 20px 20px 8px; max-width: 1280px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
+  #meta { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 20px; max-width: 1280px; margin: 0 auto;
+              position: sticky; top: 0; background: var(--bg); z-index: 5; border-bottom: 1px solid var(--line); }
+  select, input[type=search] { font: inherit; color: var(--text); background: var(--card);
+         border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+  input[type=search] { flex: 1 1 220px; min-width: 0; }
+  label.toggle { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--line);
+         border-radius: 8px; background: var(--card); cursor: pointer; user-select: none; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px 0; max-width: 1280px; margin: 0 auto; }
+  .chip { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 999px;
+          padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #count { color: var(--muted); font-size: 13px; padding: 10px 20px 0; max-width: 1280px; margin: 0 auto; }
+  main { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px;
+         padding: 12px 20px 40px; max-width: 1280px; margin: 0 auto; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+          display: flex; flex-direction: column; }
+  .thumb { position: relative; display: block; aspect-ratio: 16 / 9; background: var(--chip); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .badge { position: absolute; font-size: 12px; font-weight: 600; padding: 2px 7px; border-radius: 6px;
+           background: rgba(0,0,0,.75); color: #fff; }
+  .rank { top: 8px; left: 8px; }
+  .dur { bottom: 8px; right: 8px; }
+  .short { bottom: 8px; left: 8px; background: var(--hot); }
+  .body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .title { font-weight: 600; color: var(--text); text-decoration: none; display: -webkit-box;
+           -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .title:hover { text-decoration: underline; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+  .stats b { font-weight: 600; }
+  .gain { color: var(--accent); }
+  .regions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; padding-top: 4px; }
+  .rg { font-size: 11px; padding: 2px 6px; border-radius: 5px; background: var(--chip); color: var(--muted); }
+  .rg.cur { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 40px 0; }
+  @media (max-width: 700px) {
+    .controls { position: static; }   /* on phones the filters scroll away instead of covering the list */
+    header, .controls, .chips, #count, main { padding-left: 14px; padding-right: 14px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trends</h1>
+  <div id="meta">Loading…</div>
+</header>
+
+<div class="controls">
+  <select id="country" aria-label="Country"></select>
+  <select id="day" aria-label="Day"></select>
+  <select id="sort" aria-label="Sort">
+    <option value="rank">Sort: chart position</option>
+    <option value="vph">Sort: views per hour</option>
+    <option value="gain">Sort: views gained since last check</option>
+    <option value="views">Sort: total views</option>
+    <option value="new">Sort: newest</option>
+  </select>
+  <select id="cat" aria-label="Category"></select>
+  <label class="toggle"><input type="checkbox" id="shorts"> Shorts only</label>
+  <input type="search" id="q" placeholder="Search titles, channels, tags (use | for OR)">
+</div>
+
+<div class="chips" id="chips"></div>
+<div id="count"></div>
+<main id="list"></main>
+
+<script>
+// Quick searches for your niche. Edit freely: label + words to look for (| means OR).
+const NICHE = [
+  ["I'm A Celeb", "i'm a celeb|im a celeb|imaceleb|jungle"],
+  ["Love Island", "love island"],
+  ["Traitors", "traitors"],
+  ["Reality TV", "reality|towie|made in chelsea|married at first sight|mafs|love is blind|celebs go dating"],
+  ["K-drama", "kdrama|k-drama|korean drama"],
+  ["Gossip & drama", "drama|gossip|exposed|tea|beef|cheating|breakup"],
+];
+
+const COUNTRIES = { ALL: "All countries", GB: "UK", US: "US", IE: "Ireland", CA: "Canada",
+  AU: "Australia", IN: "India", NG: "Nigeria", ZA: "South Africa" };
+const CATS = { 1: "Film & Animation", 2: "Cars", 10: "Music", 15: "Pets & Animals", 17: "Sports",
+  19: "Travel", 20: "Gaming", 22: "People & Blogs", 23: "Comedy", 24: "Entertainment",
+  25: "News & Politics", 26: "How-to & Style", 27: "Education", 28: "Science & Tech", 29: "Nonprofits" };
+
+const $ = (id) => document.getElementById(id);
+const compact = new Intl.NumberFormat("en-GB", { notation: "compact", maximumFractionDigits: 1 });
+let snap = null;
+
+const saved = (() => { try { return JSON.parse(localStorage.getItem("trends-ui") || "{}"); } catch { return {}; } })();
+function save() {
+  try {
+    localStorage.setItem("trends-ui", JSON.stringify({ country: $("country").value, sort: $("sort").value,
+      cat: $("cat").value, shorts: $("shorts").checked }));
+  } catch {}
+}
+
+function dur(s) {
+  if (s == null) return "";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+}
+
+function el(tag, attrs = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v; else if (v != null) n.setAttribute(k, v);
+  }
+  for (const k of kids) if (k != null && k !== "") n.append(k);
+  return n;
+}
+
+function fillSelect(sel, pairs, keep) {
+  sel.replaceChildren(...pairs.map(([v, t]) => el("option", { value: v }, t)));
+  if (keep != null && pairs.some(([v]) => String(v) === String(keep))) sel.value = keep;
+}
+
+async function loadDay(day) {
+  $("meta").textContent = "Loading…";
+  try {
+    const r = await fetch(`data/${day}.json`, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    snap = await r.json();
+  } catch (e) {
+    snap = null;
+    $("meta").textContent = "Couldn't load the data. Has the daily job run yet?";
+    $("list").replaceChildren();
+    return;
+  }
+  const when = new Date(snap.fetchedAt).toLocaleString("en-GB",
+    { timeZone: "Europe/London", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  $("meta").textContent = `Updated ${when} UK time · ${snap.videos.length.toLocaleString("en-GB")} videos · ${snap.regions.length} countries`;
+  fillSelect($("country"), [["ALL", COUNTRIES.ALL], ...snap.regions.map((c) => [c, COUNTRIES[c] || c])],
+    $("country").value || saved.country || "GB");
+  const cats = [...new Set(snap.videos.map((v) => v.category))].filter(Boolean)
+    .sort((a, b) => (CATS[a] || a).localeCompare(CATS[b] || b));
+  fillSelect($("cat"), [["", "All categories"], ...cats.map((c) => [c, CATS[c] || `Category ${c}`])],
+    $("cat").value || saved.cat || "");
+  render();
+}
+
+function matches(v, q) {
+  if (!q) return true;
+  const hay = `${v.title} ${v.channel} ${(v.tags || []).join(" ")}`.toLowerCase();
+  return q.split("|").map((w) => w.trim()).filter(Boolean).some((w) => hay.includes(w));
+}
+
+function render() {
+  if (!snap) return;
+  const country = $("country").value, sort = $("sort").value, cat = $("cat").value;
+  const onlyShorts = $("shorts").checked, q = $("q").value.trim().toLowerCase();
+  document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("on", c.dataset.q === q));
+
+  let rows = snap.videos.filter((v) =>
+    (country === "ALL" || v.ranks[country]) && (!cat || v.category === cat) &&
+    (!onlyShorts || v.short) && matches(v, q));
+
+  const best = (v) => Math.min(...Object.values(v.ranks));
+  const by = {
+    rank: country === "ALL" ? (a, b) => b.regionCount - a.regionCount || best(a) - best(b)
+                            : (a, b) => a.ranks[country] - b.ranks[country],
+    vph: (a, b) => (b.viewsPerHour ?? -1) - (a.viewsPerHour ?? -1),
+    gain: (a, b) => (b.gain ?? -1) - (a.gain ?? -1),
+    views: (a, b) => b.views - a.views,
+    new: (a, b) => (b.published || "").localeCompare(a.published || ""),
+  };
+  rows.sort(by[sort]);
+
+  $("count").textContent = `${rows.length.toLocaleString("en-GB")} videos`;
+  if (!rows.length) {
+    $("list").replaceChildren(el("div", { class: "empty" }, "Nothing matches. Try another search or country."));
+    return;
+  }
+  $("list").replaceChildren(...rows.slice(0, 300).map((v) => card(v, country)));
+}
+
+function card(v, country) {
+  const url = `https://www.youtube.com/watch?v=${encodeURIComponent(v.id)}`;
+  const rankText = country === "ALL" ? `${v.regionCount} countr${v.regionCount === 1 ? "y" : "ies"}`
+                                     : `#${v.ranks[country]}`;
+  const thumb = el("a", { class: "thumb", href: url, target: "_blank", rel: "noopener" },
+    v.thumb ? el("img", { src: v.thumb, alt: "", loading: "lazy" }) : null,
+    el("span", { class: "badge rank" }, rankText),
+    v.short ? el("span", { class: "badge short" }, "Short") : null,
+    v.duration ? el("span", { class: "badge dur" }, dur(v.duration)) : null);
+
+  const stats = el("div", { class: "stats" },
+    el("span", {}, el("b", {}, compact.format(v.views)), " views"),
+    v.viewsPerHour != null ? el("span", {}, el("b", {}, compact.format(v.viewsPerHour)), "/hr") : null,
+    v.gain != null ? el("span", { class: "gain" }, `+${compact.format(v.gain)} since last check`) : null);
+
+  const regions = el("div", { class: "regions" },
+    ...Object.entries(v.ranks).sort((a, b) => a[1] - b[1]).map(([c, r]) =>
+      el("span", { class: "rg" + (c === country ? " cur" : "") }, `${c} #${r}`)));
+
+  return el("article", { class: "card" }, thumb,
+    el("div", { class: "body" },
+      el("a", { class: "title", href: url, target: "_blank", rel: "noopener", title: v.title }, v.title),
+      el("div", { class: "sub" }, `${v.channel} · ${CATS[v.category] || "Other"}`),
+      stats, regions));
+}
+
+function buildChips() {
+  const all = el("button", { class: "chip", type: "button" }, "All");
+  all.dataset.q = "";
+  const chips = [all, ...NICHE.map(([label, q]) => {
+    const b = el("button", { class: "chip", type: "button" }, label);
+    b.dataset.q = q.toLowerCase();
+    return b;
+  })];
+  chips.forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.q; render(); }));
+  $("chips").replaceChildren(...chips);
+}
+
+async function init() {
+  buildChips();
+  if (saved.sort) $("sort").value = saved.sort;
+  if (saved.shorts) $("shorts").checked = true;
+  for (const id of ["country", "sort", "cat", "shorts"]) $(id).addEventListener("change", () => { save(); render(); });
+  $("q").addEventListener("input", render);
+  $("day").addEventListener("change", () => loadDay($("day").value));
+
+  let days = [];
+  try {
+    const r = await fetch("data/index.json", { cache: "no-store" });
+    days = (await r.json()).days || [];
+  } catch {}
+  if (!days.length) days = ["latest"];
+  fillSelect($("day"), days.map((d, i) => [d, i === 0 ? `Latest (${d})` : d]));
+  if (days[0] === "latest") $("day").options[0].textContent = "Latest";
+  loadDay(days[0]);
+}
+init();
+</script>
+</body>
+</html>
